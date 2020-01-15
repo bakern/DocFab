@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{% block title %}DocFab{% endblock %}</title>
+        {% block stylesheets %}
+            {{ encore_entry_link_tags('app') }}
+        {% endblock %}
+    </head>
+    <body>
+        {% block body %}
+        <div>
+            <div class="uk-navbar-container uk-sticky uk-sticky-fixed" style="display: block; position: fixed; top: 0px; width: 100%;">
+                <div class="uk-container uk-container-expand uk-background-primary uk-light">
+                    <nav class="uk-navbar" uk-navbar="">
+                        <div class="uk-navbar-left">
+                            <a class="uk-navbar-item uk-logo" href="#">DocFab</a>
+                            <ul class="uk-navbar-nav">
+                                <li>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="uk-navbar-center">
+                            <div class="uk-navbar-item">
+                                <form action="javascript:location.reload()">
+                                    <button class="uk-button uk-button-danger">Reset</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="uk-navbar-right">
+                            <div class="uk-navbar-item">
+                                <select id="scanner-select" class="uk-select" style="width: 200px;" disabled>
+                                    <option>Detecting...</option>
+                                </select>
+                            </div>
+                            <div class="uk-navbar-item">
+                                <button id="scan-button" class="uk-button uk-button-secondary" disabled>Scan</button>
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            </div>
+            <div class="uk-sticky-placeholder" style="height: 80px; margin: 0px;"></div>
+        </div>
+
+        {% block content %}
+        {% endblock %}
+
+        {% block footer %}
+        <div id="footer" style="width: 100%; height: 150px;"></div>
+        {% endblock %}
+
+        {% block javascripts %}
+            {{ encore_entry_script_tags('app') }}
+        {% endblock %}
+
+        <div id="stats-wrapper"></div>
+
+        {% endblock %}
+    </body>
+</html>

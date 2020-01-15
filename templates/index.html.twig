@@ -1,0 +1,33 @@
+{% extends 'base.html.twig' %}
+
+{% block content %}
+
+    <aside id="sidebar" class="uk-light">
+        <div style="padding: 2rem;">
+            <ul class="uk-nav-default uk-nav-parent-icon" uk-nav>
+                <li id="files-header" class="uk-nav-header">Uploaded Files</li>
+            </ul>
+        </div>
+    </aside>
+    <div id="content-wrapper" style="margin-left: 340px;">
+        <div class="uk-section uk-section-xsmall">
+            <div class="uk-container uk-container-expand">
+                <div id="file-header" uk-grid><div>
+                    <div class="js-upload uk-placeholder uk-text-center uk-align-left uk-background-muted">
+                        <span uk-icon="icon: cloud-upload"></span>
+                        <span class="uk-text-middle">Upload PDFs by dropping here or</span>
+                        <div uk-form-custom>
+                            <input id="file-input" type="file" class="uk-input" multiple>
+                            <button class="uk-button uk-button-primary">Select Files</button>
+                        </div>
+                    </div>
+                    <progress id="js-progressbar" class="uk-progress" value="0" max="100" hidden></progress>
+                </div></div>
+            </div>
+        </div>
+
+        <div id="workspace-container" class="uk-container uk-container-expand" uk-height-viewport="expand: true">
+        </div>
+    </div>
+
+{% endblock %}

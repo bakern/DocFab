@@ -1,0 +1,32 @@
+body {
+    background-color: lightgray;
+}
+
+#sidebar {
+  position: fixed;
+  left: 0;
+  top:80px;
+  bottom:0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: #222;
+  width: 340px;
+  z-index:1;
+}
+
+input.file-name-input {
+    height: inherit;
+}
+
+/* Keep pages visible when sorting */
+.page-container .uk-sortable-placeholder {
+    opacity: inherit;
+}
+
+/* Fix scrolling to anchor/target due to fixed header */
+:target::before {
+    content: "";
+    display: block;
+    height: 80px;
+    margin: -80px 0 0;
+}
