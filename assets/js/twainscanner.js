@@ -1,6 +1,9 @@
 const $ = require('jquery');
+import { addScanPage, finishScan } from './app.js';
 
 var scannerReady = false;
+var scanningNow = false;
+var scanPage = 0;
 var connectionRetries = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -12,10 +15,12 @@ document.addEventListener('DOMContentLoaded', function() {
         ws.onopen = function () {
             console.log("Websocket connected.");
             connectionRetries = 0;
+            $('#scan-button').prop('hidden', false);
+            $('#connect-scanner-button').prop('hidden', true);
             setTimeout(initializeScanner, 2000);
         };
         ws.onclose = function () {
-            ws = null;
+            //ws = null;
             if (scannerReady) {
                 console.log("Websocket connection closed.");
                 setScannerReady(false);
@@ -25,6 +30,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 console.log('Could not reconnect to scanner service, giving up.');
                 $('#scanner-select').html('<option>No scanners found</option>');
+                $('#scan-button').prop('hidden', true);
+                $('#connect-scanner-button').prop('hidden', false).prop('disabled', false);
                 clearInterval(checkInterval);
             }
         };
@@ -34,25 +41,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
         ws.onmessage = function (e) {
-            console.log("Received websocket message: "+e.data);
             if (typeof e.data === "string") {
-                $('#scanner-select').html(e.data);
-                setScannerReady(true);
+                var message = JSON.parse( e.data );
+                console.log("Received websocket message", message);
+                if (message.messageType == 'UpdateSources') {
+                    console.log("Updating sources...");
+                    updateSourceList(message);
+                } else if (message.messageType == 'StartScan') {
+                    $('#scan-button').prop('hidden', true);
+                    $('#stop-scan-button').prop('hidden', false);
+                } else if (message.messageType == 'ScanEnd') {
+                    $('#scan-button').prop('hidden', false);
+                    $('#stop-scan-button').prop('hidden', true);
+                    setTimeout(finishScan, 2000);
+                }
             }
             else if (e.data instanceof ArrayBuffer) {
                 //IF Received Data is ArrayBuffer
+                console.log("Received websocket ArrayBuffer message: "+e.data);
             }
             else if (e.data instanceof Blob) {
-                i++;
-                var f = e.data;
-                f.name = "File" + i;
-                storedFiles.push(f);
-                var reader = new FileReader();
-                reader.onload = function (e) {
-                    var html = "<div class=\"col-sm-2 text-center\" style=\"border: 1px solid black; margin-left: 2px;\"><img height=\"200px\" width=\"200px\" src=\"" + e.target.result + "\" data-file='" + f.name + "' class='selFile' title='Click to remove'><br/>" + i + "</div>";
-                    selDiv.append(html);
-                }
-                reader.readAsDataURL(f);
+                scanPage++;
+                var file = e.data;
+                console.log("Received websocket document: "+file.name);
+                addScanPage(file, scanPage);
             }
         };
     }
@@ -69,18 +81,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // setInterval will keep checking the connection every 5 seconds
     var checkInterval = setInterval(checkConnection, 5000);
+
+    $(document).on('click', '#connect-scanner-button', function(e) {
+        connectionRetries = 0;
+        connectWebsocket();
+        $('#connect-scanner-button').prop('disabled', true)
+        // setInterval will keep checking the connection every 5 seconds
+        checkInterval = setInterval(checkConnection, 5000);
+    });
 });
 
 function initializeScanner() {
     if (ws) {
+        console.log('Asking for list of scanners...');
         ws.send("GetScannerList");
     }
+}
+
+function updateSourceList(msg) {
+    var optionList = '';
+    var sources = JSON.parse(msg.sources);
+    for (var i = 0; i < sources.length; i++) {
+        if (msg.selected && (msg.selected == sources[i])) {
+            optionList += '<option selected>'+sources[i]+'</option>';
+        } else {
+            optionList += '<option>'+sources[i]+'</option>';
+        }
+    }
+    $('#scanner-select').html(optionList);
+    setScannerReady(true);
 }
 
 function setScannerReady(status) {
     scannerReady = status;
     if (scannerReady) {
         $('#scan-button').prop('disabled', false);
+        $('#scanner-select').prop('disabled', false);
     } else {
         $('#scan-button').prop('disabled', true);
         $('#scanner-select').html('<option>Detecting...</option>');
@@ -88,5 +124,9 @@ function setScannerReady(status) {
 }
 
 $(document).on('click', '#scan-button', function(e) {
+    scanPage = 0;
     ws.send("StartScan");
+});
+$(document).on('click', '#stop-scan-button', function(e) {
+    ws.send("StopScan");
 });

@@ -1,5 +1,4 @@
 require('../css/app.css');
-require('./twainscanner.js');
 
 const $ = require('jquery');
 
@@ -28,6 +27,9 @@ var uploadedFiles = [];
 var pdflibFiles = [];
 var pdfjsFiles = [];
 var pdfCount = 0;
+var scanPageFiles = [];
+var scanPagePdflibFiles = [];
+var currentScanFileIndex= null;
 
 /** Memory Stats Section **/
 var stats = new Stats();
@@ -209,10 +211,109 @@ function readFile(file, fileIndex) {
   //reader.readAsDataURL(file);
 }
 
+export async function addScanPage(file, scanPage) {
+    if (scanPage == 1) {
+        // Create new scan document/file
+        scanPageFiles = [];
+        scanPagePdflibFiles = [];
+        pdfCount++;
+        currentScanFileIndex = pdfCount;
+        var now = new Date();
+        file.name = "Scan - " + now.toString().slice(0, 24);
+        uploadedFiles[pdfCount] = file;
+        addFileMeta(pdfCount, file.name);
+    }
+    var blobURL = URL.createObjectURL(file);
+    console.log('Temp Scan File '+scanPage+' Blob URL: '+blobURL);
+    scanPageFiles[scanPage] = file;
+
+    // Read in the data to create the pdflib and pdfjsLib objects
+    const existingPdfBytes = await fetch(blobURL).then(res => res.arrayBuffer());
+    // Create temporary pdf-lib object
+    try {
+        scanPagePdflibFiles[scanPage] = await PDFDocument.load(existingPdfBytes);
+    }
+    catch(error) {
+        console.error(error);
+        UIkit.notification({message: error, status: 'danger'});
+        return;
+    }
+
+    // Scan is in progress, just add page thumbnail for now using pdfjs
+    var loadingTask = pdfjsLib.getDocument({data: existingPdfBytes});
+    loadingTask.promise.then(function(pdf) {
+      console.log('Scan page number '+scanPage+' loaded');
+
+      if (scanPage == 1) {
+          // Add a canvas for the first page in file list
+          var fileCanvas = document.createElement("canvas");
+          var fileAnchor = document.createElement("a");
+          $(fileAnchor).attr("href", '#file-'+currentScanFileIndex).append(fileCanvas);
+          $('#pdf-'+currentScanFileIndex).prepend(fileAnchor);
+      }
+
+      // Create a canvas for the page in the workspace.
+      var canvas = document.createElement("canvas");
+      $(canvas).attr("data-file-number", currentScanFileIndex).attr("data-page-number", scanPage);
+      var container = document.createElement("div");
+      $(container).attr("class", "uk-inline-clip uk-transition-toggle page-container uk-grid-margin");
+      $(container).append(canvas);
+
+      var pageButtonsHtml = '<div class="uk-transition-slide-right-small uk-position-right uk-overlay uk-overlay-default uk-background-primary uk-light">' +
+        '<ul class="uk-iconnav uk-iconnav-vertical">' +
+        '<li><a class="delete-page" uk-icon="icon: trash"></a></li>' +
+        '<li><a class="copy-page" uk-icon="icon: copy"></a></li>' +
+        '<li><a class="rotate-page-right" uk-icon="icon: forward"></a></li>' +
+        '<li><a class="rotate-page-left" uk-icon="icon: reply"></a></li>' +
+        '</ul></div>';
+      $(container).append(pageButtonsHtml);
+
+      $('#workspace-file-'+currentScanFileIndex).append(container);
+      renderPage(pdf, 1, canvas);
+
+      // For first page only, render to the file canvas
+      if (scanPage == 1) renderPage(pdf, 1, fileCanvas);
+
+    }, function (reason) {
+      console.error(reason);
+    });
+}
+
+export async function finishScan() {
+    // Combine individual scanned PDFs into one to keep in memory
+    var outputPDF = await PDFDocument.create();
+    console.log('Finished scan, combining '+(scanPageFiles.length-1)+' scanned pages into single PDF');
+    for(var i = 1; i < scanPageFiles.length; i++) {
+        console.log('Adding page '+i);
+
+        // each scanPagePdflib object is actually a single page PDF document, so take page 1 (0-indexed) from that document
+        const [newPage] = await outputPDF.copyPages(scanPagePdflibFiles[i], [0]);
+        outputPDF.addPage(newPage);
+    }
+
+    // We don't need to add to uploadedFiles[], because that already exists with the file name, and that's all we need it for.
+    // We don't need to add to pdfjsFiles[], because we've already rendered all of the thumbnails.
+    // We will need to add to pdflibFiles[], because it is used to save PDFs later.
+    pdflibFiles[currentScanFileIndex] = outputPDF;
+
+    console.log('Finished merging scanned pages');
+    // Clear some memory
+    scanPageFiles = [];
+    scanPagePdflibFiles = [];
+}
+
+function addFileMeta(fileIndex, fileName, pageCount = null) {
+    $('#files-header').parent().append('<li id="pdf-'+fileIndex+'" class="file-container uk-margin-bottom" data-file-number="'+fileIndex+'"><div id="caption-'+fileIndex+'" class="uk-thumbnail-caption"></div></li>');
+    $('#workspace-container').append('<div id="file-'+fileIndex+'-container"><hr class="uk-divider uk-margin-top"><h2 id="file-'+fileIndex+'" class="uk-margin-top uk-margin-remove-bottom"><input type="text" class="uk-input uk-form-blank file-name-input" spellcheck="false" id="file-'+fileIndex+'-name" data-file-number="'+fileIndex+'" value="'+fileName+'"></input></h2><div id="workspace-file-'+fileIndex+'" uk-sortable="cls-placeholder: none; group: sortable-pages" uk-grid="margin: not-first-row"></div></div>');
+    if (pageCount) {
+        $('#caption-'+fileIndex).html('<ul><li>'+fileName+' ('+pageCount+' pages)</li></ul><ul class="uk-iconnav"><li><a class="uk-icon-link delete-file" uk-icon="trash"></a></li><li><a class="uk-icon-link download-file" uk-icon="file-pdf"></a></li><li><a class="uk-icon-link print-file" uk-icon="print"></a></li></ul>');
+    } else {
+        $('#caption-'+fileIndex).html('<ul><li>'+fileName+'</li></ul><ul class="uk-iconnav"><li><a class="uk-icon-link delete-file" uk-icon="trash"></a></li><li><a class="uk-icon-link download-file" uk-icon="file-pdf"></a></li><li><a class="uk-icon-link print-file" uk-icon="print"></a></li></ul>');
+    }
+}
+
 // Process the PDF (split it and display it on webpage)
 async function loadPdf(pdfUrl, fileIndex) {
-    $('#files-header').parent().append('<li id="pdf-'+fileIndex+'" class="file-container uk-margin-bottom" data-file-number="'+fileIndex+'"><div id="caption-'+fileIndex+'" class="uk-thumbnail-caption"></div></li>');
-    $('#workspace-container').append('<div id="file-'+fileIndex+'-container"><hr class="uk-divider-icon uk-icon-check uk-margin-top"><h2 id="file-'+fileIndex+'" class="uk-margin-top uk-margin-remove-bottom"><input type="text" class="uk-input uk-form-blank file-name-input" spellcheck="false" id="file-'+fileIndex+'-name" data-file-number="'+fileIndex+'" value="'+uploadedFiles[fileIndex].name+'"></input></h2><div id="workspace-file-'+fileIndex+'" uk-sortable="cls-placeholder: none; group: sortable-pages" uk-grid="margin: not-first-row"></div></div>');
     const existingPdfBytes = await fetch(pdfUrl).then(res => res.arrayBuffer());
 
     // Create in-memory pdf-lib object
@@ -224,11 +325,11 @@ async function loadPdf(pdfUrl, fileIndex) {
         UIkit.notification({message: error, status: 'danger'});
         return;
     }
-    const pages = pdflibFiles[fileIndex].getPages();
 
     // Use PDF.js to generate thumbnail images
     var loadingTask = pdfjsLib.getDocument({data: existingPdfBytes});
     loadingTask.promise.then(function(pdf) {
+      addFileMeta(fileIndex, uploadedFiles[fileIndex].name, pdf.numPages);
       console.log('PDF number '+fileIndex+' loaded');
       pdfjsFiles[fileIndex] = pdf;
 
@@ -251,28 +352,26 @@ async function loadPdf(pdfUrl, fileIndex) {
             '<ul class="uk-iconnav uk-iconnav-vertical">' +
             '<li><a class="delete-page" uk-icon="icon: trash"></a></li>' +
             '<li><a class="copy-page" uk-icon="icon: copy"></a></li>' +
+            '<li><a class="rotate-page-right" uk-icon="icon: forward"></a></li>' +
+            '<li><a class="rotate-page-left" uk-icon="icon: reply"></a></li>' +
             '</ul></div>';
           $(container).append(pageButtonsHtml);
 
           $('#workspace-file-'+fileIndex).append(container);
-          renderPage(fileIndex, pageNumber, canvas);
+          renderPage(pdf, pageNumber, canvas);
 
           // For first page only, render to the file canvas
-          if (pageNumber == 1) renderPage(fileIndex, pageNumber, fileCanvas);
+          if (pageNumber == 1) renderPage(pdf, pageNumber, fileCanvas);
       }
     }, function (reason) {
       console.error(reason);
     });
-
-    $('#caption-'+fileIndex).html('<ul><li>'+uploadedFiles[fileIndex].name+' ('+pages.length+' pages)</li></ul><ul class="uk-iconnav"><li><a class="uk-icon-link delete-file" uk-icon="trash"></a></li><li><a class="uk-icon-link download-file" uk-icon="file-pdf"></a></li><li><a class="uk-icon-link print-file" uk-icon="print"></a></li></ul>');
 }
 
 // Render the pages to the canvas (or <img>) that are already in the DOM
-function renderPage(fileIndex, pageNumber, canvas) {
-    pdfjsFiles[fileIndex].getPage(pageNumber).then(function(page) {
-      console.log('File '+fileIndex+' Page '+pageNumber+' loaded');
-
-      var scale =0.4;
+function renderPage(pdfjsFile, pageNumber, canvas) {
+    pdfjsFile.getPage(pageNumber).then(function(page) {
+      var scale = 0.4;
       var viewport = page.getViewport({scale: scale});
 
       var context = canvas.getContext('2d');
@@ -286,7 +385,7 @@ function renderPage(fileIndex, pageNumber, canvas) {
       };
       var renderTask = page.render(renderContext);
       renderTask.promise.then(function () {
-        console.log('File '+fileIndex+' Page '+pageNumber+' rendered');
+        console.log('Page '+pageNumber+' rendered');
       });
     });
 }

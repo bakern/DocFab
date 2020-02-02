@@ -15,7 +15,7 @@
                 <div id="file-header" uk-grid><div>
                     <div class="js-upload uk-placeholder uk-text-center uk-align-left uk-background-muted">
                         <span uk-icon="icon: cloud-upload"></span>
-                        <span class="uk-text-middle">Upload PDFs by dropping here or</span>
+                        <span class="uk-text-middle">Drop PDFs here or</span>
                         <div uk-form-custom>
                             <input id="file-input" type="file" class="uk-input" multiple>
                             <button class="uk-button uk-button-primary">Select Files</button>
@@ -30,4 +30,9 @@
         </div>
     </div>
 
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    {{ encore_entry_script_tags('scanner') }}
 {% endblock %}
