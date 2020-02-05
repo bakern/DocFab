@@ -30,3 +30,8 @@ input.file-name-input {
     height: 80px;
     margin: -80px 0 0;
 }
+
+.workspace-file {
+    background-color: #aaa;
+    padding-bottom: 40px;
+}

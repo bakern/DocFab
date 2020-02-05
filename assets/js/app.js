@@ -3,7 +3,7 @@ require('../css/app.css');
 const $ = require('jquery');
 
 // pdf-lib for creating & modifying PDFs
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, degrees, PageSizes } from 'pdf-lib';
 
 // Mozilla PDF.js for rendering PDFs
 import pdfjsLib from 'pdfjs-dist/webpack';
@@ -227,6 +227,10 @@ $(document).on('click', '.rotate-page-left', function(e) {
     canvas.height = oldWidth;
     renderPage(pdfjsFiles[parseInt(canvas.dataset.fileNumber)], parseInt(canvas.dataset.pageNumber), canvas, newRotation)
 })
+/** Handle new file button **/
+$(document).on('click', '#new-file-button', function(e) {
+    newFile();
+})
 
 // Get everything set up once page is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -253,6 +257,31 @@ function readFile(file, fileIndex) {
   //reader.readAsDataURL(file);
 }
 
+async function newFile() {
+    pdfCount++;
+    var now = new Date();
+    var fileName = "New File " + now.toString().slice(0, 24);
+    var newFile;
+
+    // Create new PDF
+    var newPDF = await PDFDocument.create();
+    newPDF.addPage(PageSizes.Letter);
+    var newPdfUri = await newPDF.saveAsBase64({ dataUri: true});
+    // Create a file from the base64, save it to uploadedFiles[], and load it to create pdfjs and pdflib objects and display it
+    var newPdfFile = await urltoFile(newPdfUri, fileName, 'application/pdf')
+        .then(function(file){
+            uploadedFiles[pdfCount] = file;
+            loadPdf(URL.createObjectURL(file), pdfCount);
+            console.log(file);
+        });
+}
+function urltoFile(url, fileName, mimeType) {
+    return (fetch(url)
+        .then(function(res){return res.arrayBuffer();})
+        .then(function(buf){return new File([buf], fileName, {type:mimeType});})
+    );
+}
+
 export async function addScanPage(file, scanPage) {
     if (scanPage == 1) {
         // Create new scan document/file
@@ -261,7 +290,7 @@ export async function addScanPage(file, scanPage) {
         pdfCount++;
         currentScanFileIndex = pdfCount;
         var now = new Date();
-        file.name = "Scan - " + now.toString().slice(0, 24);
+        file.name = "Scan " + now.toString().slice(0, 24);
         uploadedFiles[pdfCount] = file;
         addFileMeta(pdfCount, file.name);
     }
@@ -352,7 +381,7 @@ export async function finishScan() {
 
 function addFileMeta(fileIndex, fileName, pageCount = null) {
     $('#files-header').parent().append('<li id="pdf-'+fileIndex+'" class="file-container uk-margin-bottom" data-file-number="'+fileIndex+'"><div id="caption-'+fileIndex+'" class="uk-thumbnail-caption"></div></li>');
-    $('#workspace-container').append('<div id="file-'+fileIndex+'-container"><hr class="uk-divider uk-margin-top"><h2 id="file-'+fileIndex+'" class="uk-margin-top uk-margin-remove-bottom"><input type="text" class="uk-input uk-form-blank file-name-input" spellcheck="false" id="file-'+fileIndex+'-name" data-file-number="'+fileIndex+'" value="'+fileName+'"></input></h2><div id="workspace-file-'+fileIndex+'" uk-sortable="cls-placeholder: none; group: sortable-pages" uk-grid="margin: not-first-row"></div></div>');
+    $('#workspace-container').append('<div id="file-'+fileIndex+'-container"><hr class="uk-divider uk-margin-top"><h2 id="file-'+fileIndex+'" class="uk-margin-top uk-margin-remove-bottom"><input type="text" class="uk-input uk-form-blank file-name-input" spellcheck="false" id="file-'+fileIndex+'-name" data-file-number="'+fileIndex+'" value="'+fileName+'"></input></h2><div id="workspace-file-'+fileIndex+'" class="workspace-file" uk-sortable="cls-placeholder: none; group: sortable-pages" uk-grid="margin: not-first-row"></div></div>');
     if (pageCount) {
         $('#caption-'+fileIndex).html('<ul><li>'+fileName+' ('+pageCount+' pages)</li></ul><ul class="uk-iconnav"><li><a class="uk-icon-link delete-file" uk-icon="trash"></a></li><li><a class="uk-icon-link download-file" uk-icon="file-pdf"></a></li><li><a class="uk-icon-link print-file" uk-icon="print"></a></li></ul>');
     } else {
@@ -424,7 +453,6 @@ function renderPage(pdfjsFile, pageNumber, canvas, rotation = null) {
       if (rotation == null) {
           // Use the rotation already set on the page
           rotation = viewport.rotation;
-          console.log('Rotation was not given, using existing rotation: ', rotation);
       } else {
           // Set the new rotation on the viewport
           viewport = page.getViewport({scale: scale, rotation: rotation});
