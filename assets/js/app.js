@@ -3,7 +3,7 @@ require('../css/app.css');
 const $ = require('jquery');
 
 // pdf-lib for creating & modifying PDFs
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 
 // Mozilla PDF.js for rendering PDFs
 import pdfjsLib from 'pdfjs-dist/webpack';
@@ -138,7 +138,8 @@ $(document).on('click', '.download-file', function(e) {
     $('#workspace-file-'+fileNumber).find('canvas').each(function(index) {
         pages[index] = {
             "pageNumber": this.dataset.pageNumber,
-            "fileNumber": this.dataset.fileNumber
+            "fileNumber": this.dataset.fileNumber,
+            "rotate": this.dataset.rotate
         };
     });
     downloadPdf(fileNumber, pages);
@@ -150,8 +151,11 @@ async function downloadPdf(fileNumber, pages) {
     for(var i = 1; i <= pages.length; i++) {
         console.log('Adding page '+pages[i-1].pageNumber+' from file '+pages[i-1].fileNumber+' to new PDF as page '+i);
         const [newPage] = await outputPDF.copyPages(pdflibFiles[pages[i-1].fileNumber], [parseInt(pages[i-1].pageNumber, 10)-1]);
+        newPage.setRotation(degrees(parseInt(pages[i-1].rotate)));
         outputPDF.addPage(newPage);
     }
+    outputPDF.setAuthor('');
+    outputPDF.setCreator('DocFab v1.0');
     var outputPdfUri = await outputPDF.saveAsBase64({ dataUri: true});
 
     FileSaver.saveAs(outputPdfUri, document.getElementById('file-'+fileNumber+'-name').value);
@@ -166,7 +170,8 @@ $(document).on('click', '.print-file', function(e) {
     $('#workspace-file-'+fileNumber).find('canvas').each(function(index) {
         pages[index] = {
             "pageNumber": this.dataset.pageNumber,
-            "fileNumber": this.dataset.fileNumber
+            "fileNumber": this.dataset.fileNumber,
+            "rotate": this.dataset.rotate
         };
     });
     printPdf(fileNumber, pages);
@@ -178,6 +183,7 @@ async function printPdf(fileNumber, pages) {
     for(var i = 1; i <= pages.length; i++) {
         console.log('Adding page '+pages[i-1].pageNumber+' from file '+pages[i-1].fileNumber+' to new PDF as page '+i);
         const [newPage] = await outputPDF.copyPages(pdflibFiles[pages[i-1].fileNumber], [parseInt(pages[i-1].pageNumber, 10)-1]);
+        newPage.setRotation(degrees(parseInt(pages[i-1].rotate)));
         outputPDF.addPage(newPage);
     }
     var outputPdfBase64 = await outputPDF.saveAsBase64();
@@ -185,6 +191,42 @@ async function printPdf(fileNumber, pages) {
     printJS({printable: outputPdfBase64, type: 'pdf', base64: true, showModal:true});
     console.log('Done');
 }
+/** Handle rotating right **/
+$(document).on('click', '.rotate-page-right', function(e) {
+    // Rotate the canvas and re-draw image
+    var canvas = $(this).closest('.page-container').children('canvas')[0];
+    // Get current rotation, set new rotation
+    var oldRotation = parseInt(canvas.dataset.rotate);
+    if (!oldRotation) oldRotation = 0;
+    if (oldRotation == 270) oldRotation = -90;
+    var newRotation = oldRotation + 90;
+    // Rotate the image
+    // Either of these methods work.  This first method re-renders the page, which takes more resources (and time) and keeps the margins, which messes up the grid alignment
+    var oldWidth = canvas.width;
+    var oldHeight = canvas.height;
+    canvas.width = oldHeight;
+    canvas.height = oldWidth;
+    renderPage(pdfjsFiles[parseInt(canvas.dataset.fileNumber)], parseInt(canvas.dataset.pageNumber), canvas, newRotation)
+    // This method rotates/transforms the existing canvas, which is quicker and leaves the grid alignment nicer
+    //canvas.style.transform = "rotate(" + newRotation + "deg)";
+})
+/** Handle rotating left **/
+$(document).on('click', '.rotate-page-left', function(e) {
+    // Rotate the canvas and re-draw image
+    var canvas = $(this).closest('.page-container').children('canvas')[0];
+    // Get current rotation, set new rotation
+    var oldRotation = parseInt(canvas.dataset.rotate);
+    if (!oldRotation) oldRotation = 0;
+    if (oldRotation == 0) oldRotation = 360;
+    var newRotation = oldRotation - 90;
+    canvas.dataset.rotate = newRotation;
+    // Rotate the image
+    var oldWidth = canvas.width;
+    var oldHeight = canvas.height;
+    canvas.width = oldHeight;
+    canvas.height = oldWidth;
+    renderPage(pdfjsFiles[parseInt(canvas.dataset.fileNumber)], parseInt(canvas.dataset.pageNumber), canvas, newRotation)
+})
 
 // Get everything set up once page is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -256,7 +298,7 @@ export async function addScanPage(file, scanPage) {
       var canvas = document.createElement("canvas");
       $(canvas).attr("data-file-number", currentScanFileIndex).attr("data-page-number", scanPage);
       var container = document.createElement("div");
-      $(container).attr("class", "uk-inline-clip uk-transition-toggle page-container uk-grid-margin");
+      $(container).attr("class", "uk-inline uk-transition-toggle page-container uk-grid-margin");
       $(container).append(canvas);
 
       var pageButtonsHtml = '<div class="uk-transition-slide-right-small uk-position-right uk-overlay uk-overlay-default uk-background-primary uk-light">' +
@@ -291,8 +333,14 @@ export async function finishScan() {
         outputPDF.addPage(newPage);
     }
 
+    var outputPdfUri = await outputPDF.saveAsBase64({ dataUri: true});
     // We don't need to add to uploadedFiles[], because that already exists with the file name, and that's all we need it for.
-    // We don't need to add to pdfjsFiles[], because we've already rendered all of the thumbnails.
+    // Add to pdfjsFiles[], in case we need to re-render pages or show them full screen.
+    const finishedPdfBytes = await fetch(outputPdfUri).then(res => res.arrayBuffer());
+    var loadingTask = pdfjsLib.getDocument({data: finishedPdfBytes});
+    loadingTask.promise.then(function(pdf) {
+      pdfjsFiles[currentScanFileIndex] = pdf;
+    });
     // We will need to add to pdflibFiles[], because it is used to save PDFs later.
     pdflibFiles[currentScanFileIndex] = outputPDF;
 
@@ -345,7 +393,7 @@ async function loadPdf(pdfUrl, fileIndex) {
           var canvas = document.createElement("canvas");
           $(canvas).attr("data-file-number", fileIndex).attr("data-page-number", pageNumber);
           var container = document.createElement("div");
-          $(container).attr("class", "uk-inline-clip uk-transition-toggle page-container uk-grid-margin");
+          $(container).attr("class", "uk-inline uk-transition-toggle page-container uk-grid-margin");
           $(container).append(canvas);
 
           var pageButtonsHtml = '<div class="uk-transition-slide-right-small uk-position-right uk-overlay uk-overlay-default uk-background-primary uk-light">' +
@@ -369,14 +417,23 @@ async function loadPdf(pdfUrl, fileIndex) {
 }
 
 // Render the pages to the canvas (or <img>) that are already in the DOM
-function renderPage(pdfjsFile, pageNumber, canvas) {
+function renderPage(pdfjsFile, pageNumber, canvas, rotation = null) {
     pdfjsFile.getPage(pageNumber).then(function(page) {
       var scale = 0.4;
       var viewport = page.getViewport({scale: scale});
+      if (rotation == null) {
+          // Use the rotation already set on the page
+          rotation = viewport.rotation;
+          console.log('Rotation was not given, using existing rotation: ', rotation);
+      } else {
+          // Set the new rotation on the viewport
+          viewport = page.getViewport({scale: scale, rotation: rotation});
+      }
 
       var context = canvas.getContext('2d');
       canvas.height = viewport.height;
       canvas.width = viewport.width;
+      canvas.dataset.rotate = rotation;
 
       // Render PDF page into canvas context
       var renderContext = {
