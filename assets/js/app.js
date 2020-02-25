@@ -395,12 +395,39 @@ async function loadPdf(pdfUrl, fileIndex) {
 
     // Create in-memory pdf-lib object
     try {
-        pdflibFiles[fileIndex] = await PDFDocument.load(existingPdfBytes);
+        pdflibFiles[fileIndex] = await PDFDocument.load(existingPdfBytes, { ignoreEncryption: true });
     }
     catch(error) {
         console.error(error);
         UIkit.notification({message: error, status: 'danger'});
         return;
+    }
+
+    // If PDF is encrypted, we will need to decrypt it, since pdf-lib doesn't support encryption yet
+    if (pdflibFiles[fileIndex].isEncrypted) {
+        let formData = new FormData();
+        formData.append('pdf', uploadedFiles[fileIndex], uploadedFiles[fileIndex].name);
+        $.ajax({
+            url: '/decrypt-pdf',
+            type: 'POST',
+            contentType: false,
+            data: formData,
+            processData: false,
+            xhr: function() {
+                var xhr = new XMLHttpRequest();
+                xhr.responseType = 'blob';
+                return xhr;
+            },
+            success: function(blob) {
+                console.log('Decrypted '+uploadedFiles[fileIndex].name);
+                var blobURL = URL.createObjectURL(blob);
+                // Update the pdf-lib object since it's used to generate new PDFs (async function needed)
+                loadDecryptedPdfLib(blobURL, fileIndex);
+            },
+            error: function(xhr, status, error) {
+                UIkit.notification('Failed to decrypt <b>'+uploadedFiles[fileIndex].name+'</b>', 'danger');
+            }
+        });
     }
 
     // Use PDF.js to generate thumbnail images
@@ -443,6 +470,17 @@ async function loadPdf(pdfUrl, fileIndex) {
     }, function (reason) {
       console.error(reason);
     });
+}
+async function loadDecryptedPdfLib(blobURL, fileIndex) {
+    const pdfBytes = await fetch(blobURL).then(res => res.arrayBuffer());
+    try {
+        pdflibFiles[fileIndex] = await PDFDocument.load(pdfBytes);
+    }
+    catch(error) {
+        console.error(error);
+        UIkit.notification({message: error, status: 'danger'});
+        return;
+    }
 }
 
 // Render the pages to the canvas (or <img>) that are already in the DOM
