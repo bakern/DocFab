@@ -3,7 +3,7 @@
         "@symfony/webpack-encore": "^0.28.2",
         "core-js": "^3.0.0",
         "file-saver": "^2.0.2",
-        "jquery": "^3.4.1",
+        "jquery": "^3.5.0",
         "pdf-lib": "^1.2.1",
         "pdfjs-dist": "^2.2.228",
         "print-js": "^1.0.63",
